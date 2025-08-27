@@ -1,5 +1,7 @@
-import argparse, sys, time, struct, socket
+import argparse, sys, time
 import cv2, numpy as np
+
+# ---- HSV rəng diapazonları ----
 HSV_RED_1 = (0, 120, 70),  (10, 255, 255)
 HSV_RED_2 = (170, 120, 70),(180, 255, 255)
 HSV_GREEN = (35, 80, 60),  (85, 255, 255)
@@ -38,6 +40,9 @@ def main():
     ap.add_argument("--w", type=int, default=640)
     ap.add_argument("--h", type=int, default=480)
     ap.add_argument("--show", action="store_true")
+    ap.add_argument("--scale", type=float, default=1.0, help="preview scale")
+    ap.add_argument("--font",  type=float, default=0.7, help="HUD font scale")
+    ap.add_argument("--th",    type=int,   default=2,   help="HUD thickness")
     args = ap.parse_args()
 
     backends = {
@@ -56,11 +61,12 @@ def main():
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.h)
 
     if not cap.isOpened():
-        print("Camera open failed", file=sys.stderr)
+        print("❌ Camera open failed", file=sys.stderr)
         sys.exit(1)
 
     if args.show:
         cv2.namedWindow("view", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("view", int(args.w * args.scale), int(args.h * args.scale))
 
     try:
         while True:
@@ -70,9 +76,7 @@ def main():
                 break
             H, W = frame.shape[:2]
 
-            blur = cv2.GaussianBlur(frame, (5,5), 0)
-            hsv  = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
-
+            hsv  = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
             red_mask, green_mask = make_masks(hsv)
             red_mask   = clean(red_mask,   3)
             green_mask = clean(green_mask, 3)
@@ -111,8 +115,21 @@ def main():
             print(f"color={color}  left_px={int(left_px)}  right_px={int(right_px)}  width_px={int(bw)} | bytes: {color},{left_b},{right_b},{width_b}", flush=True)
 
             if args.show:
-                hud = f"COLOR={['RED','GREEN','NONE'][color if color>=0 else 2]} L={int(left_px)} R={int(right_px)} W={int(bw)}"
-                cv2.putText(overlay, hud, (10,25), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0,255,0), 2)
+                # HUD fon qutusu
+                hud_h = 55
+                bg = overlay.copy()
+                cv2.rectangle(bg, (5, 5), (int(0.6*W), 5+hud_h), (0,0,0), -1)
+                overlay = cv2.addWeighted(bg, 0.6, overlay, 0.4, 0)
+
+                hud1 = f"COLOR={['RED','GREEN','NONE'][color if color>=0 else 2]}  W={int(bw)}"
+                hud2 = f"L={int(left_px)}  R={int(right_px)}"
+
+                cv2.putText(overlay, hud1, (12, 28), cv2.FONT_HERSHEY_SIMPLEX, args.font, (0,255,0), args.th, cv2.LINE_AA)
+                cv2.putText(overlay, hud2, (12, 50), cv2.FONT_HERSHEY_SIMPLEX, args.font, (0,255,0), args.th, cv2.LINE_AA)
+
+                if args.scale != 1.0:
+                    overlay = cv2.resize(overlay, (int(W*args.scale), int(H*args.scale)))
+
                 cv2.imshow("view", overlay)
                 if (cv2.waitKey(1) & 0xFF) in (27, ord('q')):
                     break
